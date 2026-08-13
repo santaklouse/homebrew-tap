@@ -1,0 +1,33 @@
+name: Test Homebrew formula
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    name: Install and test p2p-netcat
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Configure tap
+        run: brew tap santaklouse/tap "$GITHUB_WORKSPACE"
+      - name: Audit formula
+        run: brew audit --strict --online santaklouse/tap/p2p-netcat
+      - name: Install formula
+        run: brew install santaklouse/tap/p2p-netcat
+      - name: Test installed commands
+        shell: bash
+        run: |
+          brew test santaklouse/tap/p2p-netcat
+          p2p-nc --version
+          pnc --version
+          p2p-netcat --version
