@@ -1,0 +1,66 @@
+name: Update p2p-netcat formula
+
+on:
+  schedule:
+    - cron: "29 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-p2p-netcat
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Import latest stable formula
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: true
+      - name: Download formula from the latest release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source_repository="santaklouse/go-p2p-netcat"
+          tag="$(gh release view --repo "$source_repository" --json tagName --jq .tagName)"
+          if gh release download "$tag" \
+            --repo "$source_repository" \
+            --pattern p2p-netcat.rb \
+            --output "${RUNNER_TEMP}/p2p-netcat.rb"; then
+            printf 'available=true\n' >>"$GITHUB_OUTPUT"
+            printf 'tag=%s\n' "$tag" >>"$GITHUB_OUTPUT"
+          else
+            printf 'Latest release %s has no Homebrew formula; nothing to update.\n' "$tag"
+            printf 'available=false\n' >>"$GITHUB_OUTPUT"
+          fi
+      - name: Validate formula
+        if: steps.release.outputs.available == 'true'
+        run: ruby -c "${RUNNER_TEMP}/p2p-netcat.rb"
+      - name: Update formula
+        if: steps.release.outputs.available == 'true'
+        shell: bash
+        run: install -m 0644 "${RUNNER_TEMP}/p2p-netcat.rb" Formula/p2p-netcat.rb
+      - name: Commit update
+        if: steps.release.outputs.available == 'true'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Formula/p2p-netcat.rb; then
+            printf 'Formula is already current for %s.\n' "$RELEASE_TAG"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Formula/p2p-netcat.rb
+          git commit -m "Update p2p-netcat to ${RELEASE_TAG}"
+          git push
